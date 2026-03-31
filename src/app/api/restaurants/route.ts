@@ -34,6 +34,7 @@ export async function GET(request: Request) {
         'X-Goog-Api-Key': apiKey || '',
         // 🌟 2. 在 FieldMask 加上 regularOpeningHours 來取得精確的營業時間文字
         'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount,places.photos,places.reviews,places.websiteUri,places.googleMapsUri,places.regularOpeningHours',
+      },
       body: JSON.stringify(requestBody)
     });
 

@@ -1,5 +1,21 @@
 import { NextResponse } from 'next/server';
 
+// 🌟 1. 新增：計算兩點經緯度直線距離的神奇公式 (Haversine formula)
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371e3; // 地球半徑 (公尺)
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return Math.floor(R * c); // 算出真實公尺數並無條件捨去小數點
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const lat = parseFloat(searchParams.get('lat') || '0');
@@ -13,7 +29,6 @@ export async function GET(request: Request) {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
     const googleApiUrl = 'https://places.googleapis.com/v1/places:searchNearby';
 
-// 🌟 1. 加上 openNow: true，保證回傳的都是現在有開的店！
     const requestBody = {
       includedTypes: ["restaurant"],
       maxResultCount: 20,
@@ -23,7 +38,6 @@ export async function GET(request: Request) {
           radius: 1500.0
         }
       },
-      // 👇 就是這行！防雷神器！
       openNow: true 
     };
 
@@ -32,8 +46,8 @@ export async function GET(request: Request) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey || '',
-        // 🌟 2. 在 FieldMask 加上 regularOpeningHours 來取得精確的營業時間文字
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount,places.photos,places.reviews,places.websiteUri,places.googleMapsUri,places.regularOpeningHours',
+        // 🌟 2. 關鍵更新：在最後面加上 places.location，請 Google 給我們餐廳座標
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount,places.photos,places.reviews,places.websiteUri,places.googleMapsUri,places.regularOpeningHours,places.location',
       },
       body: JSON.stringify(requestBody)
     });
@@ -58,24 +72,27 @@ export async function GET(request: Request) {
         imageUrl = reviewImages[0];
       }
 
-      // 🌟 2. 關鍵更新：整理真實的 Google 評論 (最多抓 3 則)
       let reviews = [];
       if (place.reviews && place.reviews.length > 0) {
         reviews = place.reviews.map((rev: any) => ({
           author: rev.authorAttribution?.displayName || '匿名吃貨',
           text: rev.text?.text || '只留下了星星，沒有留下評論。',
-          time: rev.relativePublishTimeDescription || '' // 例如 "2 週前"
+          time: rev.relativePublishTimeDescription || '' 
         }));
       }
 
-      // 🌟 3. 嘗試找出今天開到幾點 (進階功能，如果沒有就寫營業中)
       let openStatus = '營業狀態未知';
-      let isActuallyOpen = false; // 預設為沒開
+      let isActuallyOpen = false; 
 
       if (place.regularOpeningHours) {
-        // Google 會明確回傳 openNow: true 或 false
         isActuallyOpen = place.regularOpeningHours.openNow === true;
         openStatus = isActuallyOpen ? '營業中' : '休息中';
+      }
+
+      // 🌟 3. 關鍵更新：計算真實距離
+      let realDistance = 9999; // 預設一個很遠的數字防呆
+      if (place.location) {
+        realDistance = getDistance(lat, lng, place.location.latitude, place.location.longitude);
       }
 
       return {
@@ -84,11 +101,10 @@ export async function GET(request: Request) {
         imageUrl: imageUrl,
         rating: place.rating || 0,
         reviewCount: place.userRatingCount || 0,
-        distance: Math.floor(Math.random() * 800) + 100,
+        distance:realDistance, // 🌟 換成算出來的真實距離！不再是 Math.random 了
         reviewImages: reviewImages,
         googleMapsUri: place.googleMapsUri,
         reviews: reviews,
-        // 新增這行：優先使用店家網站，沒有的話給 Google Map 連結
         menuUrl: place.websiteUri || place.googleMapsUri || null,
         openStatus: openStatus,
         isActuallyOpen: isActuallyOpen
@@ -99,7 +115,11 @@ export async function GET(request: Request) {
       r.imageUrl.includes('places.googleapis.com')
     );
 
-    return NextResponse.json(restaurantsWithPhotos.length > 0 ? restaurantsWithPhotos : formattedRestaurants);
+    // 🌟 4. 加碼優化：把回傳的資料「依照距離由近到遠」排序，讓懶人少走點路！
+    const sortedRestaurants = (restaurantsWithPhotos.length > 0 ? restaurantsWithPhotos : formattedRestaurants)
+      .sort((a: any, b: any) => a.distance - b.distance);
+
+    return NextResponse.json(sortedRestaurants);
 
   } catch (error) {
     console.error("API 發生例外錯誤:", error);

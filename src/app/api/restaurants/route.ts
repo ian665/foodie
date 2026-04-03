@@ -30,15 +30,18 @@ export async function GET(request: Request) {
     const googleApiUrl = 'https://places.googleapis.com/v1/places:searchNearby';
 
     const requestBody = {
-      includedTypes: ["restaurant"],
-      maxResultCount: 20,
+      includedTypes: ["restaurant", "cafe", "bakery", "meal_takeaway", "bar"],
+      maxResultCount: 20, // Google 鐵規定最多 20 家
       locationRestriction: {
         circle: {
           center: { latitude: lat, longitude: lng },
-          radius: 1500.0
+          // 🌟 2. 把範圍縮小成 800 公尺！讓 20 家店高密度集中在你身邊，不會被稀釋
+          radius: 800.0 
         }
+        
       },
-      openNow: true 
+      openNow: true, // 依然保持防白跑機制
+      languageCode: "ja"
     };
 
     const response = await fetch(googleApiUrl, {
@@ -47,7 +50,7 @@ export async function GET(request: Request) {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey || '',
         // 🌟 2. 關鍵更新：在最後面加上 places.location，請 Google 給我們餐廳座標
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount,places.photos,places.reviews,places.websiteUri,places.googleMapsUri,places.regularOpeningHours,places.location',
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount,places.photos,places.reviews,places.websiteUri,places.googleMapsUri,places.regularOpeningHours,places.location,places.types',
       },
       body: JSON.stringify(requestBody)
     });
@@ -59,9 +62,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: `API 錯誤: ${data.error.message}` }, { status: 400 });
     }
 
-    const places = data.places || [];
+    const rawPlaces = data.places || [];
+    const validPlaces = rawPlaces.filter((place: any) => {
+      if (place.types && place.types.includes('lodging')) return false;
+      return true;
+    });
 
-    const formattedRestaurants = places.map((place: any) => {
+
+    const formattedRestaurants = validPlaces.map((place: any) => {
       let imageUrl = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600&auto=format&fit=crop';
       let reviewImages: string[] = [imageUrl];
 

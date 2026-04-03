@@ -1,14 +1,13 @@
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    // 警告：這會讓你的網站忽略 ESLint 錯誤強制上線
-    ignoreDuringBuilds: true,
-  },
+  // 🌟 1. 允許你的手機 IP 連線測試！(解決 Blocked cross-origin 警告)
+  allowedDevOrigins: ['192.168.100.101'], 
+  
   typescript: {
-    // 警告：這會讓你的網站忽略 TypeScript 錯誤強制上線
     ignoreBuildErrors: true,
   },
+  
+  // 🌟 2. 把 eslint 的區塊整塊刪除 (解決 Unrecognized key 警告)
 };
 
 export default nextConfig;
